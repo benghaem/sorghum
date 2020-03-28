@@ -8,19 +8,12 @@
 int main(){
     CGAVirt testvm;
 
-    std::vector<int> input_N = {0,2,8,7};
-    std::vector<int> input_W_0 = {2,0,4,3};
-    //std::vector<int> input_W_1 = {1,0,1,0};
 
-    std::vector<std::vector<int>> inputs_W;
 
-    //setup the west input
-    inputs_W.emplace_back(std::move(input_W_0));
-    //inputs_W.emplace_back(std::move(input_W_1));
-    input_W_0.clear();
-    //input_W_1.clear();
-
+    TestCase tc0({0,2,8,7},{{2,0,4,3}},{});
     std::vector<int> output;
+
+
     /*
     std::vector<CGAInst> el_product_prog = {
         CGAInst::pull_W,
@@ -99,11 +92,11 @@ int main(){
         CGAInst::pop
     };
 
-    std::vector<std::vector<CGAInst>> dotprod_mac_OSDF_prog = {
-        dotprod_mac_OSDF_prog_setup,
-        dotprod_mac_OSDF_prog_comp,
-        dotprod_mac_OSDF_prog_cleanup
-    };
+
+    CGAProg dotprod_mac_OSDF_prog;
+    dotprod_mac_OSDF_prog.stages.push_back(dotprod_mac_OSDF_prog_setup);
+    dotprod_mac_OSDF_prog.stages.push_back(dotprod_mac_OSDF_prog_comp);
+    dotprod_mac_OSDF_prog.stages.push_back(dotprod_mac_OSDF_prog_cleanup);
 
     std::vector<CGAInst> dotprod_mac_WSDF_prog_setup = {
     };
@@ -121,18 +114,14 @@ int main(){
     };
 
 
-    testvm.west_input_len = 1;
-    testvm.north_input_len = 1;
-    testvm.south_output_len = 1;
-
     testvm.cga_height = 1;
 
-    testvm.eval(input_N,
-                inputs_W,
-                output,
-                dotprod_mac_OSDF_prog);
 
-    std::cout << "MX Stack size: " << testvm.max_stack_size << std::endl;
+    testvm.eval(tc0,
+                dotprod_mac_OSDF_prog,
+                output);
+
+    std::cout << "MX Stack size: " << testvm.stat_max_stack << std::endl;
     dbg_print_vec(output);
 
  }

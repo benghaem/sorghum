@@ -5,8 +5,9 @@
 #include "sorghum/esynth.h"
 #include "sorghum/vm.h"
 #include "sorghum/util.h"
+#include "sorghum/mcmc_synth.h"
 
-
+/*
 int demo_dot_prod(){
 
     std::vector<int> input_N = {0,2,8,7};
@@ -107,7 +108,63 @@ int demo_broadcast(){
 
     return 1;
 }
+*/
+
+void demo_mcmc_synth(){
+    TestCase t0_ewise_mul({0,1,2,3},{{0,1,2,3}},{0,1,4,9});
+    TestCase t1_ewise_mul({2,3},{{4,8}},{8,24});
+
+    std::vector<TestCase> tcs_ewise_mul = {t0_ewise_mul, t1_ewise_mul};
+
+    TestCase t0_dotprod({0,1,0,1},{{8,5,2,6}},{11});
+    TestCase t1_dotprod({4,4,12},{{0,1,1},{1,0,0}},{16,4});
+    std::vector<TestCase> tcs_dotprod = {t0_dotprod, t1_dotprod};
+
+    MCMCProposalDist pdist;
+    pdist.p_swap = 0.34;
+    pdist.p_insert = 0.33;
+    pdist.p_remove = 0.33;
+    pdist.p_replace = 0.0;
+    pdist.p_inc_stage = 0.0;
+    pdist.p_dec_stage = 0.0;
+
+    std::random_device rd;
+    unsigned int seed = rd();
+
+    MCMCSynth ms0(pdist,
+                  1,
+                  1,
+                  tcs_ewise_mul,
+                  seed);
+
+    ms0.init();
+
+    std::vector<CGAProg> valid_canidates;
+
+    for (int i = 0; i < 1000000000; i++){
+        ms0.gen_next_canidate();
+        if (ms0.get_canidate_valid()){
+            std::cout << "! CANIDATE FOUND ! @ " << i << " c" << ms0.get_canidate_cost() << std::endl;
+            CGAProg canidate = ms0.get_canidate();
+            dbg_print_prog(canidate);
+            valid_canidates.push_back(canidate);
+        }
+        if (i % 1000000 == 0){
+            std::cout << i << ", " << ms0.get_canidate_cost() << std::endl;
+            CGAProg canidate = ms0.get_canidate();
+            dbg_print_prog(canidate);
+        }
+
+        if (valid_canidates.size() == 10){
+            break;
+        }
+    }
+
+    for (CGAProg& vcan : valid_canidates){
+        dbg_print_prog(vcan);
+    }
+}
 
 int main(){
-    demo_dot_prod();
+    demo_mcmc_synth();
 }

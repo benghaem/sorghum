@@ -10,9 +10,15 @@ CGAVirt::CGAVirt(){
 CGAVirt::~CGAVirt(){
 }
 
-void CGAVirt::reset(){
-    this->hw_stack.clear();
-    this->hw_reg = 0;
+void CGAVirt::reset_regs(){
+    //clear all internal registers
+    hw_stack.clear();
+    hw_reg = 0;
+}
+
+void CGAVirt::reset_stats(){
+    stat_max_stack = 0;
+    stat_instr_run = 0;
 }
 
 bool CGAVirt::check(std::vector<int>& north_input,
@@ -20,34 +26,30 @@ bool CGAVirt::check(std::vector<int>& north_input,
                     std::vector<int>& south_output,
                     std::vector<std::vector<CGAInst>>& progs){
 
-    //check for correct input sizes
-    if (north_input.size() != north_input_len){
-        //std::cout << "bad N input size" << std::endl;
-        return false;
-    }
+
 
     if (west_inputs.size() != cga_height){
         //std::cout << "bad number of W input" << std::endl;
         return false;
     }
 
-    for (auto& west_input : west_inputs){
-        if (west_input.size() != west_input_len){
-            //std::cout << "bad W input size" << std::endl;
-            return false;
-        }
-    }
-
     std::vector<int> test_output;
     test_output.clear();
 
-    this->reset();
+    CGAProg p;
+    p.stages = progs;
 
-    bool success = eval(north_input,
-         west_inputs,
-         test_output,
-         progs);
-    
+    TestCase tc({},{},{});
+
+    tc.north_input = north_input;
+    tc.west_inputs = west_inputs;
+    tc.south_output = south_output;
+
+    bool success = eval(
+         tc,
+         p,
+         test_output);
+
     if (!success){
         //std::cout << "eval error" << std::endl;
         return false;
@@ -87,21 +89,24 @@ bool CGAVirt::check(std::vector<int>& north_input,
 }
 
 
-bool CGAVirt::eval(std::vector<int>& north_input,
-          std::vector<std::vector<int>>& west_inputs,
-          std::vector<int>& south_output,
-          std::vector<std::vector<CGAInst>>& progs){
+bool CGAVirt::eval(
+        TestCase& tc,
+        CGAProg& prog,
+        std::vector<int>& output
+        ){
 
-    max_stack_size = 0;
+    unsigned int instr_count = 0;
+    unsigned int run_max_stack = 0;
+
     std::deque<int> pe_link_N;
     std::deque<int> pe_link_S;
     std::deque<int> pe_link_W;
 
-    unsigned int north_input_sz = north_input.size();
+    unsigned int north_input_sz = tc.north_input.size();
 
     //init the queue with the north input (in reverse order) to match the W
     //input access pattern
-    for (auto v : north_input){
+    for (auto v : tc.north_input){
         pe_link_N.push_front(v);
     }
     pe_link_S.clear();
@@ -109,18 +114,18 @@ bool CGAVirt::eval(std::vector<int>& north_input,
     //run each pe from top to bottom
     for (unsigned int pe = 0; pe < cga_height; pe++){
 
-        //reset PE state
-        this->reset();
+        //reset VM state
+        reset_regs();
 
         //load west PE link
         pe_link_W.clear();
-        for (int v : west_inputs[pe]){
+        for (int v : tc.west_inputs[pe]){
             pe_link_W.push_front(v);
         }
 
         //run each program in the programs vector (setup, comp, cleanup)
         int prog_id = 0;
-        for (std::vector<CGAInst>& prog : progs){
+        for (std::vector<CGAInst>& stage : prog.stages){
             //we run each program cga height times
             int base_iterations = 0;
             //if (prog_id == 0){
@@ -128,8 +133,9 @@ bool CGAVirt::eval(std::vector<int>& north_input,
             //}
             for (unsigned int i = base_iterations; i < north_input_sz; i++){
                 //interpret the program
-                for (CGAInst inst : prog){
+                for (CGAInst inst : stage){
 
+                    instr_count++;
                     if (debug){
                         std::cout << "---" << std::endl;
                         std::cout << "Prog: " << prog_id << std::endl;
@@ -204,7 +210,6 @@ bool CGAVirt::eval(std::vector<int>& north_input,
                         hw_reg = hw_stack.back();
                         hw_stack.pop_back();
                     } else if (inst == CGAInst::push){
-                       
                         hw_stack.push_back(hw_reg);
                     } else if (inst == CGAInst::peek){
                         if (hw_stack.empty()){
@@ -232,8 +237,8 @@ bool CGAVirt::eval(std::vector<int>& north_input,
 
                     //record the maximum stack size
                     unsigned int hw_stack_size = hw_stack.size();
-                    if (hw_stack_size > max_stack_size){
-                        max_stack_size = hw_stack_size;
+                    if (hw_stack_size > run_max_stack){
+                        run_max_stack = hw_stack_size;
                     }
                 }
             }
@@ -255,13 +260,28 @@ bool CGAVirt::eval(std::vector<int>& north_input,
     //not required, but easier to follow the code
 
     while(!pe_link_N.empty()){
-        south_output.push_back(pe_link_N.front());
+        output.push_back(pe_link_N.front());
         pe_link_N.pop_front();
     }
+
+    // Update statistics
+    if (run_max_stack > stat_max_stack){
+        stat_max_stack = run_max_stack;
+    }
+
+    stat_instr_run += instr_count;
 
     return true;
 }
 
+
+CGAInst int_to_CGAInst(unsigned int v){
+    if (v < CGAInst_NUM){
+        return static_cast<CGAInst>(v);
+    } else {
+        return CGAInst::undef;
+    }
+}
 
 
 std::ostream& operator<<(std::ostream& out, const CGAInst inst){

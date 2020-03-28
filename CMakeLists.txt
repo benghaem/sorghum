@@ -12,6 +12,8 @@ set(SOURCES
     src/esynth.cpp
     src/vm.cpp
     src/util.cpp
+    src/synth.cpp
+    src/mcmc_synth.cpp
 )
 
 add_executable(scratch src/scratch.cpp ${SOURCES})

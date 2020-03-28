@@ -45,3 +45,7 @@ void dbg_print_progs(std::vector<std::vector<CGAInst>>& progs){
             s++;
         }
 }
+
+void dbg_print_prog(CGAProg& prog){
+    dbg_print_progs(prog.stages);
+}

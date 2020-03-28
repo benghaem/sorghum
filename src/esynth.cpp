@@ -13,9 +13,6 @@ bool esynth(int max_attempts,
 
     CGAVirt vm;
     vm.cga_height = west_inputs.size();
-    vm.north_input_len = north_input.size();
-    vm.west_input_len = west_inputs[0].size();
-    vm.south_output_len = south_output.size();
 
 
     std::vector<CGAInst> allowed_instr = {
