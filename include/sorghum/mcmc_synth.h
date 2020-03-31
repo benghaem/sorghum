@@ -4,6 +4,17 @@
 #include "sorghum/vm.h"
 #include "sorghum/synth.h"
 
+struct MCMCOutGoodness {
+    float per_correct_values;
+    float per_values_present;
+};
+
+struct MCMCCost {
+    float correctness;
+    float execution;
+    bool valid;
+};
+
 struct MCMCProposalDist {
     double p_swap;
     double p_insert;
@@ -28,6 +39,7 @@ public:
     MCMCSynth(MCMCProposalDist &proposal_dist,
               int max_stages,
               int max_types,
+              int max_inst,
               std::vector<TestCase>& test_cases,
               unsigned int seed
               );
@@ -52,7 +64,9 @@ public:
 
 private:
 
-    float compute_correctness(TestCase& tc, std::vector<int> output);
+    MCMCOutGoodness compute_output_goodness(TestCase& tc, std::vector<int>& output);
+
+    MCMCCost unified_cost_fn(TestCase& tc, CGAProg& prog, std::vector<int>& output);
 
     CGAProg xform_canidate(MCMCxform xform);
 
@@ -60,6 +74,8 @@ private:
     void xform_replace_inst(CGAProg& prog, ProgCursor sel, CGAInst inst);
     void xform_remove_inst(CGAProg& prog, ProgCursor sel);
     void xform_insert_inst(CGAProg& prog, ProgCursor sel, CGAInst inst);
+    void xform_inc_stage(CGAProg& prog);
+    void xform_dec_stage(CGAProg& prog);
 
     //Randomization helper functions
     CGAInst gen_random_inst();
@@ -73,6 +89,7 @@ private:
     //Configuration
     int max_canidate_stages;
     int max_canidate_types;
+    int max_canidate_inst_per_stage;
 
     // Current canidate info
     float canidate_cost;

@@ -102,6 +102,8 @@ bool CGAVirt::eval(
     std::deque<int> pe_link_S;
     std::deque<int> pe_link_W;
 
+    cga_height = tc.west_inputs.size();
+
     unsigned int north_input_sz = tc.north_input.size();
 
     //init the queue with the north input (in reverse order) to match the W

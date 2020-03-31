@@ -116,38 +116,57 @@ void demo_mcmc_synth(){
 
     std::vector<TestCase> tcs_ewise_mul = {t0_ewise_mul, t1_ewise_mul};
 
-    TestCase t0_dotprod({0,1,0,1},{{8,5,2,6}},{11});
-    TestCase t1_dotprod({4,4,12},{{0,1,1},{1,0,0}},{16,4});
-    std::vector<TestCase> tcs_dotprod = {t0_dotprod, t1_dotprod};
+    TestCase t0_dotprod({8,5,2,1},{{12,16,99,2},{7,0,1,0}},{376, 58});
+    TestCase t1_dotprod({4,4,12},{{0,1,1},{1,1,0}},{16,8});
+    TestCase t2_dotprod({1,2,3},{{0,1,1},{1,0,0},{1,1,1}},{1,2,3,5,1,6});
+    std::vector<TestCase> tcs_dotprod = {t0_dotprod, t1_dotprod, t2_dotprod};
+
+    std::vector<TestCase>& sel_tcs = tcs_dotprod;
 
     MCMCProposalDist pdist;
     pdist.p_swap = 0.34;
-    pdist.p_insert = 0.33;
-    pdist.p_remove = 0.33;
+    pdist.p_insert = 0.34;
+    pdist.p_remove = 0.30;
     pdist.p_replace = 0.0;
-    pdist.p_inc_stage = 0.0;
-    pdist.p_dec_stage = 0.0;
+    pdist.p_inc_stage = 0.01;
+    pdist.p_dec_stage = 0.01;
 
     std::random_device rd;
     unsigned int seed = rd();
 
     MCMCSynth ms0(pdist,
-                  1,
-                  1,
-                  tcs_ewise_mul,
+                  3, //2 max stages
+                  1, //1 pe type
+                  10, //max 7 inst per stage
+                  sel_tcs,
                   seed);
 
     ms0.init();
 
     std::vector<CGAProg> valid_canidates;
+    float best_canidate_cost = 0;
 
     for (int i = 0; i < 1000000000; i++){
         ms0.gen_next_canidate();
         if (ms0.get_canidate_valid()){
-            std::cout << "! CANIDATE FOUND ! @ " << i << " c" << ms0.get_canidate_cost() << std::endl;
+            float ms0_cc = ms0.get_canidate_cost();
+            std::cout << "! CANIDATE FOUND ! @ " << i << " c" << ms0_cc << std::endl;
+
             CGAProg canidate = ms0.get_canidate();
-            dbg_print_prog(canidate);
-            valid_canidates.push_back(canidate);
+            std::vector<int> output;
+            CGAVirt vm;
+            for (int i = 0; i < 2; i++){
+                vm.eval(sel_tcs[i],
+                        canidate,
+                        output);
+                dbg_print_prog(canidate);
+                dbg_print_vec(output);
+                output.clear();
+            }
+            if (ms0_cc > best_canidate_cost){
+                best_canidate_cost = ms0_cc;
+                valid_canidates.push_back(canidate);
+            }
         }
         if (i % 1000000 == 0){
             std::cout << i << ", " << ms0.get_canidate_cost() << std::endl;
@@ -155,13 +174,20 @@ void demo_mcmc_synth(){
             dbg_print_prog(canidate);
         }
 
-        if (valid_canidates.size() == 10){
+        if (valid_canidates.size() == 2 || best_canidate_cost >= 0.92){
             break;
         }
     }
-
-    for (CGAProg& vcan : valid_canidates){
-        dbg_print_prog(vcan);
+    
+    int i = 0;
+    std::cout << "top 3 programs: " << std::endl;
+    for (auto itt = valid_canidates.crbegin(); itt != valid_canidates.crend(); itt++){
+        std::cout << "prog #" << i + 1 << std::endl;
+        dbg_print_prog(*itt);
+        if (i == 2){
+            break;
+        }
+        i++;
     }
 }
 

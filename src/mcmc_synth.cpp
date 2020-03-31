@@ -3,7 +3,7 @@
 #include <set>
 
 MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
-        int max_types, std::vector<TestCase> &test_cases, unsigned int seed)
+        int max_types, int max_inst, std::vector<TestCase> &test_cases, unsigned int seed)
     : zero_one_dist(0.0,1.0),
       pdist({proposal_dist.p_swap, proposal_dist.p_insert,
             proposal_dist.p_remove, proposal_dist.p_inc_stage,
@@ -11,6 +11,7 @@ MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
       rgen(seed),
       max_canidate_stages(max_stages),
       max_canidate_types(max_types),
+      max_canidate_inst_per_stage(max_inst),
       canidate_cost(0),
       canidate_valid(false),
       test_cases(test_cases)
@@ -32,7 +33,7 @@ void MCMCSynth::init(){
 
 
 //correctness should be the fraction of correct values in the output independent of order
-float MCMCSynth::compute_correctness(TestCase& tc, std::vector<int> output){
+MCMCOutGoodness MCMCSynth::compute_output_goodness(TestCase& tc, std::vector<int>& output){
 
     std::set<int> output_v;
 
@@ -42,15 +43,57 @@ float MCMCSynth::compute_correctness(TestCase& tc, std::vector<int> output){
 
     int values_found = 0;
     int total_values = tc.south_output.size();
+    int output_len = output.size();
 
     for (int tv : tc.south_output){
-        if (output_v.count(tv)){
+        if (output_v.count(tv) == 1){
             values_found++;
         }
     }
 
-    return 1 - (float)values_found / (float)total_values;
+    float percent_found = (float)values_found / (float)total_values;
+    float percent_good = (float)values_found / (float)output_len;
+
+    MCMCOutGoodness og;
+    og.per_correct_values = percent_good;
+    og.per_values_present = percent_found;
+
+    return og;
 }
+
+MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::vector<int>& output){
+    output.clear();
+    vm.reset_stats();
+
+    MCMCCost c;
+
+    float correctness_weight = 0.8;
+    float execution_weight = 0.2;
+
+    float vp_weight = 0.6;
+    float cv_weight = 0.4;
+
+    bool executed = vm.eval(tc, new_canidate, output);
+
+    if (executed){
+        MCMCOutGoodness og = compute_output_goodness(tc, output);
+
+        c.correctness = 1 - (og.per_values_present * vp_weight + og.per_correct_values * cv_weight);
+        c.valid = (og.per_values_present == 1.0);
+
+        c.execution = (float)vm.stat_max_stack / (float)vm.stack_limit;
+
+    } else {
+        c.correctness = 1;
+        c.execution = 1;
+        c.valid = false;
+    }
+
+    c.correctness *= correctness_weight;
+    c.execution *= execution_weight;
+
+    return c;
+};
 
 //transform the current canidate to create another canidate
 CGAProg MCMCSynth::xform_canidate(MCMCxform xform){
@@ -72,9 +115,28 @@ CGAProg MCMCSynth::xform_canidate(MCMCxform xform){
     } else if (xform == MCMCxform::remove){
         ProgCursor c = gen_random_cursor(new_canidate);
         xform_remove_inst(new_canidate,c);
+    } else if (xform == MCMCxform::inc_stage){
+        xform_inc_stage(new_canidate);
+    } else if (xform == MCMCxform::dec_stage){
+        xform_dec_stage(new_canidate);
     }
 
     return new_canidate;
+}
+
+void MCMCSynth::xform_inc_stage(CGAProg& prog){
+    if (prog.stages.size() < max_canidate_stages){
+        prog.stages.push_back(std::vector<CGAInst>());
+        int idx = prog.stages.size() - 1;
+        prog.stages[idx].push_back(CGAInst::pull_N);
+        prog.stages[idx].push_back(CGAInst::send_S_peek);
+    }
+}
+
+void MCMCSynth::xform_dec_stage(CGAProg& prog){
+    if (prog.stages.size() > 0){
+        prog.stages.pop_back();
+    }
 }
 
 void MCMCSynth::xform_swap_inst(CGAProg& prog, ProgCursor sel_a, ProgCursor sel_b){
@@ -85,8 +147,10 @@ void MCMCSynth::xform_swap_inst(CGAProg& prog, ProgCursor sel_a, ProgCursor sel_
 }
 
 void MCMCSynth::xform_insert_inst(CGAProg& prog, ProgCursor sel, CGAInst inst){
-    auto itt = prog.stages[sel.stage].begin();
-    prog.stages[sel.stage].insert(itt + sel.iidx, inst);
+    if (prog.stages[sel.stage].size() < max_canidate_inst_per_stage){
+        auto itt = prog.stages[sel.stage].begin();
+        prog.stages[sel.stage].insert(itt + sel.iidx, inst);
+    }
 }
 
 void MCMCSynth::xform_replace_inst(CGAProg& prog, ProgCursor sel, CGAInst inst){
@@ -149,30 +213,25 @@ void MCMCSynth::gen_next_canidate() {
 
     // evaluate new program on all test_cases and compute
     // cost function
-    float correctness = 0;
+    float correctness_cost = 0;
     float execution_cost = 0;
+    bool valid = true;
     std::vector<int> output;
     for (TestCase &tc : test_cases) {
-        output.clear();
-        vm.reset_stats();
 
-        bool executed = vm.eval(tc, new_canidate, output);
+        MCMCCost c = unified_cost_fn(tc, new_canidate, output);
 
-        if (executed) {
-            // compare output
-            correctness += compute_correctness(tc, output);
-            // get execution cost
-            execution_cost += (float)vm.stat_max_stack / (float)vm.stack_limit;
-
-        } else {
-            correctness += 1.0;
-            execution_cost += 1.0;
-        }
-
+        correctness_cost += c.correctness;
+        execution_cost += c.execution;
+        valid &= c.valid;
     }
 
     //compute the cost function (1 is best, 0 is worst)
-    float new_cost = 1.0 - (correctness + execution_cost) / 2.0;
+    float total_tests = test_cases.size();
+    float cc_avg = correctness_cost / total_tests;
+    float ec_avg = execution_cost / total_tests;
+    //float ec_avg = 0;
+    float new_cost = 1.0 - (cc_avg + ec_avg);
 
     // choose to keep or revert transformation
     float p_accept = new_cost / canidate_cost;
@@ -187,7 +246,7 @@ void MCMCSynth::gen_next_canidate() {
         }
     }
     if (accept){
-        if (correctness == 0){
+        if (valid){
             canidate_valid = true;
         } else {
             canidate_valid = false;
