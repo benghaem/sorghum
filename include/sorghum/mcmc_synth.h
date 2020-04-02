@@ -4,6 +4,17 @@
 #include "sorghum/vm.h"
 #include "sorghum/synth.h"
 
+struct MCMCResult{
+    CGAProg canidate;
+    float prob;
+    bool valid;
+
+    MCMCResult();
+
+    bool better_than(const MCMCResult& other);
+};
+
+
 struct MCMCOutGoodness {
     float per_correct_values;
     float per_values_present;
@@ -49,6 +60,8 @@ public:
     void init();
 
     void gen_next_canidate();
+
+    MCMCResult get_current_result();
 
     float get_canidate_cost() {
         return canidate_cost;

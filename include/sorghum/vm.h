@@ -13,7 +13,9 @@ enum class CGAInst{
     pull_W,
     send_S_pop,
     send_S_peek,
+    send_S_ifz_peek,
     add,
+    sub,
     mul,
     pop,
     push,
@@ -22,10 +24,12 @@ enum class CGAInst{
     zero_push,
     zero_reg,
     nop,
+    inc,
+    dec,
     undef,
 };
 
-const unsigned int CGAInst_NUM = 12;
+const unsigned int CGAInst_NUM = 16;
 
 CGAInst int_to_CGAInst(unsigned int v);
 

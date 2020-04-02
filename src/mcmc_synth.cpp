@@ -199,6 +199,14 @@ CGAInst MCMCSynth::gen_random_inst(){
     return int_to_CGAInst(rand_int(rgen));
 }
 
+MCMCResult MCMCSynth::get_current_result(){
+    MCMCResult res;
+    res.canidate = canidate;
+    res.valid = canidate_valid;
+    res.prob = canidate_cost;
+    return res;
+}
+
 void MCMCSynth::gen_next_canidate() {
     // random sample from proposal distribution to get transformation
 
@@ -253,5 +261,18 @@ void MCMCSynth::gen_next_canidate() {
         }
         canidate = new_canidate;
         canidate_cost = new_cost;
+    }
+}
+
+MCMCResult::MCMCResult(): canidate(), prob(0.0), valid(false){
+}
+
+bool MCMCResult::better_than(const MCMCResult& other){
+    if (valid && !other.valid){
+        return true;
+    } else if (!valid && other.valid){
+        return false;
+    } else {
+        return (prob > other.prob);
     }
 }

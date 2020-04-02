@@ -6,6 +6,7 @@
 #include "sorghum/vm.h"
 #include "sorghum/util.h"
 #include "sorghum/mcmc_synth.h"
+#include "sorghum/para.h"
 
 /*
 int demo_dot_prod(){
@@ -191,6 +192,40 @@ void demo_mcmc_synth(){
     }
 }
 
+void demo_para_mcmc_synth(){
+    TestCase t0_ewise_mul({0,1,2,3},{{0,1,2,3}},{0,1,4,9});
+    TestCase t1_ewise_mul({2,3},{{4,8}},{8,24});
+
+    std::vector<TestCase> tcs_ewise_mul = {t0_ewise_mul, t1_ewise_mul};
+
+    TestCase t0_dotprod({8,5,2,1},{{12,16,99,2},{7,0,1,0}},{376, 58});
+    TestCase t1_dotprod({4,4,12},{{0,1,1},{1,1,0}},{16,8});
+    TestCase t2_dotprod({1,2,3},{{0,1,1},{1,0,0},{1,1,1}},{1,2,3,5,1,6});
+    std::vector<TestCase> tcs_dotprod = {t0_dotprod, t1_dotprod, t2_dotprod};
+
+    //TestCase t0_coo({},{{3,6,7},{8,2,1}},{
+
+    std::vector<TestCase>& sel_tcs = tcs_dotprod;
+
+    MCMCProposalDist pdist;
+    pdist.p_swap = 0.34;
+    pdist.p_insert = 0.34;
+    pdist.p_remove = 0.30;
+    pdist.p_replace = 0.0;
+    pdist.p_inc_stage = 0.01;
+    pdist.p_dec_stage = 0.01;
+
+    ParaMCMC pmcmc(14,
+                   pdist,
+                   4,
+                   1,
+                   22,
+                   sel_tcs);
+
+    pmcmc.run();
+
+}
+
 int main(){
-    demo_mcmc_synth();
+    demo_para_mcmc_synth();
 }

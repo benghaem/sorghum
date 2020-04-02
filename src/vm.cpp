@@ -190,7 +190,16 @@ bool CGAVirt::eval(
                             //pe_link_S.push_back(0);
                             return false;
                         }
-
+                    } else if (inst == CGAInst::send_S_ifz_peek){
+                        //send top of stack or zero
+                        if (!hw_stack.empty()){
+                            if (!hw_reg){
+                                pe_link_S.push_back(hw_stack.back());
+                            }
+                        } else {
+                            //pe_link_S.push_back(0);
+                            return false;
+                        } 
                     } else if (inst == CGAInst::add){
                         if (hw_stack.empty()){
                             return false;
@@ -198,6 +207,13 @@ bool CGAVirt::eval(
                         int op_stack = hw_stack.back();
                         hw_stack.pop_back();
                         hw_stack.push_back(op_stack + hw_reg);
+                    } else if (inst == CGAInst::sub){
+                        if (hw_stack.empty()){
+                            return false;
+                        }
+                        int op_stack = hw_stack.back();
+                        hw_stack.pop_back();
+                        hw_stack.push_back(op_stack - hw_reg);
                     } else if (inst == CGAInst::mul){
                         if (hw_stack.empty()){
                             return false;
@@ -205,6 +221,10 @@ bool CGAVirt::eval(
                         int op_stack = hw_stack.back();
                         hw_stack.pop_back();
                         hw_stack.push_back(op_stack * hw_reg);
+                    } else if (inst == CGAInst::inc){
+                        hw_reg += 1;
+                    } else if (inst == CGAInst::dec){
+                        hw_reg -= 1;
                     } else if (inst == CGAInst::pop){
                         if (hw_stack.empty()){
                             return false;
@@ -294,6 +314,8 @@ std::ostream& operator<<(std::ostream& out, const CGAInst inst){
             return out << "pull_W";
         case CGAInst::add:
             return out << "add";
+        case CGAInst::sub:
+            return out << "sub";
         case CGAInst::send_S_pop:
             return out << "send_S_pop";
         case CGAInst::pop:
@@ -306,6 +328,8 @@ std::ostream& operator<<(std::ostream& out, const CGAInst inst){
             return out << "peek";
         case CGAInst::send_S_peek:
             return out << "send_S_peek";
+        case CGAInst::send_S_ifz_peek:
+            return out << "send_S_ifz_peek";
         case CGAInst::zero_reg:
             return out << "zero_reg";
         case CGAInst::zero_push:
@@ -314,6 +338,10 @@ std::ostream& operator<<(std::ostream& out, const CGAInst inst){
             return out << "push";
         case CGAInst::nop:
             return out << "nop";
+        case CGAInst::inc:
+            return out << "inc";
+        case CGAInst::dec:
+            return out << "dec";
         default:
             return out << "undefined";
     }
