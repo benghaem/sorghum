@@ -200,12 +200,22 @@ void demo_para_mcmc_synth(){
 
     TestCase t0_dotprod({8,5,2,1},{{12,16,99,2},{7,0,1,0}},{376, 58});
     TestCase t1_dotprod({4,4,12},{{0,1,1},{1,1,0}},{16,8});
-    TestCase t2_dotprod({1,2,3},{{0,1,1},{1,0,0},{1,1,1}},{1,2,3,5,1,6});
+    TestCase t2_dotprod({1,2,3},{{0,1,1},{1,0,0},{1,1,1}},{1,6});
     std::vector<TestCase> tcs_dotprod = {t0_dotprod, t1_dotprod, t2_dotprod};
 
-    //TestCase t0_coo({},{{3,6,7},{8,2,1}},{
+    TestCase t0_dp_ws({32,-12},{{3,6},{17,2}},{508,-8});
+    TestCase t1_dp_ws({10,17},{{4,3,63},{8,7,-22}},{148,121,851});
 
-    std::vector<TestCase>& sel_tcs = tcs_dotprod;
+    int n_a = 17;
+    int n_b = 93;
+    int w_0a = 3;
+    int w_1a = -12; 
+    int o_a = n_a*w_0a;
+    int o_b = n_b*w_1a;
+    TestCase t2_dp_ws({n_b,n_a},{{w_1a},{w_0a}},{o_a,o_b});
+    std::vector<TestCase> tcs_dp_ws = {t2_dp_ws};
+
+    std::vector<TestCase>& sel_tcs = tcs_dp_ws;
 
     MCMCProposalDist pdist;
     pdist.p_swap = 0.34;
@@ -214,15 +224,16 @@ void demo_para_mcmc_synth(){
     pdist.p_replace = 0.0;
     pdist.p_inc_stage = 0.01;
     pdist.p_dec_stage = 0.01;
+    pdist.p_change_imode = 0.0002;
 
-    ParaMCMC pmcmc(14,
-                   pdist,
-                   4,
-                   1,
-                   22,
+    ParaMCMC pmcmc(14, //threads
+                   pdist, //dist
+                   4, //max stages
+                   1, //max types
+                   10, //max instr per stage
                    sel_tcs);
 
-    pmcmc.run();
+    pmcmc.run(5);
 
 }
 

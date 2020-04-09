@@ -29,14 +29,31 @@ enum class CGAInst{
     undef,
 };
 
-const unsigned int CGAInst_NUM = 16;
+const unsigned int CGAInst_NUM = 17;
 
 CGAInst int_to_CGAInst(unsigned int v);
 
 std::ostream& operator<<(std::ostream& out, const CGAInst inst);
 
+
+enum class CGAIterMode{
+    north_len,
+    west_len,
+    pe_depth,
+    pe_depth_inv,
+    single,
+    undef,
+};
+
+
+const unsigned int CGAIterMode_NUM = 5;
+
+CGAIterMode int_to_CGAIterMode(unsigned int v);
+
+std::ostream& operator<<(std::ostream& out, const CGAIterMode imode);
+
 struct CGAProg {
-    std::vector<int> mode;
+    std::vector<CGAIterMode> iteration_mode;
     std::vector<std::vector<CGAInst>> stages;
 };
 

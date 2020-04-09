@@ -7,7 +7,7 @@ MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
     : zero_one_dist(0.0,1.0),
       pdist({proposal_dist.p_swap, proposal_dist.p_insert,
             proposal_dist.p_remove, proposal_dist.p_inc_stage,
-            proposal_dist.p_dec_stage}),
+            proposal_dist.p_dec_stage, proposal_dist.p_change_imode}),
       rgen(seed),
       max_canidate_stages(max_stages),
       max_canidate_types(max_types),
@@ -24,8 +24,10 @@ MCMCSynth::~MCMCSynth(){
 //initalize with a reasonable starting point
 void MCMCSynth::init(){
 
-    canidate.stages.push_back(std::vector<CGAInst>());
+    //default iteration mode is north len
+    canidate.iteration_mode.push_back(CGAIterMode::north_len);
 
+    canidate.stages.push_back(std::vector<CGAInst>());
     canidate.stages[0].push_back(CGAInst::pull_N);
     canidate.stages[0].push_back(CGAInst::pull_W);
     canidate.stages[0].push_back(CGAInst::send_S_peek);
@@ -73,6 +75,10 @@ MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::ve
     float vp_weight = 0.6;
     float cv_weight = 0.4;
 
+    float ex_stack_weight = 0.8;
+    float ex_stages_weight = 0.1;
+    float ex_len_weight = 0.1;
+
     bool executed = vm.eval(tc, new_canidate, output);
 
     if (executed){
@@ -81,7 +87,19 @@ MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::ve
         c.correctness = 1 - (og.per_values_present * vp_weight + og.per_correct_values * cv_weight);
         c.valid = (og.per_values_present == 1.0);
 
-        c.execution = (float)vm.stat_max_stack / (float)vm.stack_limit;
+        int total_stages = new_canidate.stages.size();
+        int total_instr_count = 0;
+        for (auto& stage : new_canidate.stages){
+            total_instr_count += stage.size();
+        }
+
+        float stack_sz = (float)vm.stat_max_stack / (float)vm.stack_limit;
+        float stage_sz = (float)total_stages / (float) max_canidate_stages;
+        float instr_sz = (float)total_instr_count / (float)(max_canidate_inst_per_stage * total_stages);
+
+        c.execution = stack_sz * ex_stack_weight
+                    + stage_sz * ex_stages_weight
+                    + instr_sz * ex_len_weight;
 
     } else {
         c.correctness = 1;
@@ -116,27 +134,39 @@ CGAProg MCMCSynth::xform_canidate(MCMCxform xform){
         ProgCursor c = gen_random_cursor(new_canidate);
         xform_remove_inst(new_canidate,c);
     } else if (xform == MCMCxform::inc_stage){
-        xform_inc_stage(new_canidate);
+        ProgCursor c = gen_random_cursor(new_canidate);
+        xform_inc_stage(new_canidate, c);
     } else if (xform == MCMCxform::dec_stage){
-        xform_dec_stage(new_canidate);
+        ProgCursor c = gen_random_cursor(new_canidate);
+        xform_dec_stage(new_canidate, c);
+    } else if (xform == MCMCxform::change_imode){
+        ProgCursor c = gen_random_cursor(new_canidate);
+        CGAIterMode new_imode = gen_random_imode();
+        xform_change_imode(new_canidate,c,new_imode);
     }
 
     return new_canidate;
 }
 
-void MCMCSynth::xform_inc_stage(CGAProg& prog){
-    if (prog.stages.size() < max_canidate_stages){
-        prog.stages.push_back(std::vector<CGAInst>());
-        int idx = prog.stages.size() - 1;
-        prog.stages[idx].push_back(CGAInst::pull_N);
-        prog.stages[idx].push_back(CGAInst::send_S_peek);
+void MCMCSynth::xform_inc_stage(CGAProg& prog, ProgCursor sel){
+    if (prog.stages.size() < (unsigned int)max_canidate_stages){
+        std::vector<CGAInst> tmp = {CGAInst::pull_N, CGAInst::pull_W, CGAInst::send_S_peek};
+        prog.stages.insert(prog.stages.cbegin() + sel.stage, tmp);
+        
+        //new stage is also in north len mode
+        prog.iteration_mode.insert(prog.iteration_mode.cbegin() + sel.stage, CGAIterMode::north_len);
     }
 }
 
-void MCMCSynth::xform_dec_stage(CGAProg& prog){
+void MCMCSynth::xform_dec_stage(CGAProg& prog, ProgCursor sel){
     if (prog.stages.size() > 0){
-        prog.stages.pop_back();
+        prog.stages.erase(prog.stages.cbegin() + sel.stage);
+        prog.iteration_mode.erase(prog.iteration_mode.cbegin() + sel.stage);
     }
+}
+
+void MCMCSynth::xform_change_imode(CGAProg& prog, ProgCursor sel, CGAIterMode imode){
+    prog.iteration_mode[sel.stage] = imode;
 }
 
 void MCMCSynth::xform_swap_inst(CGAProg& prog, ProgCursor sel_a, ProgCursor sel_b){
@@ -147,7 +177,7 @@ void MCMCSynth::xform_swap_inst(CGAProg& prog, ProgCursor sel_a, ProgCursor sel_
 }
 
 void MCMCSynth::xform_insert_inst(CGAProg& prog, ProgCursor sel, CGAInst inst){
-    if (prog.stages[sel.stage].size() < max_canidate_inst_per_stage){
+    if (prog.stages[sel.stage].size() < (unsigned int)max_canidate_inst_per_stage){
         auto itt = prog.stages[sel.stage].begin();
         prog.stages[sel.stage].insert(itt + sel.iidx, inst);
     }
@@ -199,6 +229,12 @@ CGAInst MCMCSynth::gen_random_inst(){
     return int_to_CGAInst(rand_int(rgen));
 }
 
+CGAIterMode MCMCSynth::gen_random_imode(){
+    std::uniform_int_distribution<unsigned int> rand_int(0,CGAIterMode_NUM-1);
+
+    return int_to_CGAIterMode(rand_int(rgen));
+}
+
 MCMCResult MCMCSynth::get_current_result(){
     MCMCResult res;
     res.canidate = canidate;
@@ -211,9 +247,8 @@ void MCMCSynth::gen_next_canidate() {
     // random sample from proposal distribution to get transformation
 
     unsigned int raw_xform = pdist(rgen);
-    MCMCxform xforms[5] = {MCMCxform::swap, MCMCxform::insert, MCMCxform::remove,
-        MCMCxform::inc_stage, MCMCxform::dec_stage};
-    MCMCxform xform = xforms[raw_xform];
+    
+    MCMCxform xform = MCMCSynth::xforms[raw_xform];
 
     // apply transformation
 
@@ -268,11 +303,15 @@ MCMCResult::MCMCResult(): canidate(), prob(0.0), valid(false){
 }
 
 bool MCMCResult::better_than(const MCMCResult& other){
-    if (valid && !other.valid){
-        return true;
-    } else if (!valid && other.valid){
+    return compare(other, *this);
+}
+
+bool MCMCResult::compare(const MCMCResult& a, const MCMCResult& b){
+    if (a.valid && !b.valid){
         return false;
+    } else if (!a.valid && b.valid){
+        return true;
     } else {
-        return (prob > other.prob);
+        return (a.prob < b.prob);
     }
 }

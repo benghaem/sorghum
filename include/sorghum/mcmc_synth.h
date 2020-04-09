@@ -12,6 +12,7 @@ struct MCMCResult{
     MCMCResult();
 
     bool better_than(const MCMCResult& other);
+    static bool compare(const MCMCResult& a, const MCMCResult& b);
 };
 
 
@@ -33,6 +34,7 @@ struct MCMCProposalDist {
     double p_replace;
     double p_inc_stage;
     double p_dec_stage;
+    double p_change_imode;
 };
 
 enum class MCMCxform{
@@ -41,7 +43,8 @@ enum class MCMCxform{
     remove,
     replace,
     inc_stage,
-    dec_stage
+    dec_stage,
+    change_imode
 };
 
 class MCMCSynth {
@@ -75,6 +78,12 @@ public:
         return canidate;
     };
 
+    void set_to_result(MCMCResult& result){
+        canidate = result.canidate;
+        canidate_valid = result.valid;
+        canidate_cost = result.prob;
+    }
+
 private:
 
     MCMCOutGoodness compute_output_goodness(TestCase& tc, std::vector<int>& output);
@@ -87,11 +96,19 @@ private:
     void xform_replace_inst(CGAProg& prog, ProgCursor sel, CGAInst inst);
     void xform_remove_inst(CGAProg& prog, ProgCursor sel);
     void xform_insert_inst(CGAProg& prog, ProgCursor sel, CGAInst inst);
-    void xform_inc_stage(CGAProg& prog);
-    void xform_dec_stage(CGAProg& prog);
+    void xform_inc_stage(CGAProg& prog, ProgCursor sel);
+    void xform_dec_stage(CGAProg& prog, ProgCursor sel);
+    void xform_change_imode(CGAProg& prog, ProgCursor sel, CGAIterMode imode);
 
+    static constexpr MCMCxform xforms[6] = {MCMCxform::swap, 
+                                            MCMCxform::insert,
+                                            MCMCxform::remove,
+                                            MCMCxform::inc_stage,
+                                            MCMCxform::dec_stage,
+                                            MCMCxform::change_imode};
     //Randomization helper functions
     CGAInst gen_random_inst();
+    CGAIterMode gen_random_imode();
     ProgCursor gen_random_cursor(CGAProg& prog);
 
     // Random Xform Generation

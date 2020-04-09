@@ -15,9 +15,10 @@ class ParaMCMC{
               std::vector<TestCase>& test_cases);
         ~ParaMCMC();
 
-        void run();
+        void run(int cycles);
         static void get_best_canidate(int n, MCMCSynth& mcmc,  MCMCResult& res);
 
     private:
+        std::vector<TestCase> tcs;
         std::vector<std::unique_ptr<MCMCSynth>> instances;
 };

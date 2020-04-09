@@ -126,21 +126,39 @@ bool CGAVirt::eval(
         }
 
         //run each program in the programs vector (setup, comp, cleanup)
-        int prog_id = 0;
+        int prog_stage_id = 0;
         for (std::vector<CGAInst>& stage : prog.stages){
-            //we run each program cga height times
+            //we run each program based on the mode
             int base_iterations = 0;
-            //if (prog_id == 0){
-            //    base_iterations=pe;
-            //}
-            for (unsigned int i = base_iterations; i < north_input_sz; i++){
+            unsigned int total_iterations = 0;
+            switch(prog.iteration_mode[prog_stage_id]){
+                case CGAIterMode::north_len:
+                    total_iterations = north_input_sz;
+                    break;
+                case CGAIterMode::west_len:
+                    total_iterations = tc.west_inputs[pe].size();
+                    break;
+                case CGAIterMode::pe_depth:
+                    total_iterations = pe + 1;
+                    break;
+                case CGAIterMode::pe_depth_inv:
+                    total_iterations = cga_height - pe;
+                    break;
+                case CGAIterMode::single:
+                    total_iterations = 1;
+                    break;
+                case CGAIterMode::undef:
+                    //this is an error case
+                    return false;
+            }
+            for (unsigned int i = base_iterations; i < total_iterations; i++){
                 //interpret the program
                 for (CGAInst inst : stage){
 
                     instr_count++;
                     if (debug){
                         std::cout << "---" << std::endl;
-                        std::cout << "Prog: " << prog_id << std::endl;
+                        std::cout << "Stage: " << prog_stage_id << std::endl;
                         std::cout << "Iter: " << i << std::endl;
                         std::cout << "PE: " << pe << std::endl;
                         std::cout << "PE LINK: NORTH" << std::endl;
@@ -265,7 +283,7 @@ bool CGAVirt::eval(
                 }
             }
 
-            prog_id++;
+            prog_stage_id++;
         }
 
         //we are switching PEs any unused elements in the N LINK must be
@@ -342,6 +360,34 @@ std::ostream& operator<<(std::ostream& out, const CGAInst inst){
             return out << "inc";
         case CGAInst::dec:
             return out << "dec";
+        default:
+            return out << "undefined";
+    }
+}
+
+
+CGAIterMode int_to_CGAIterMode(unsigned int v){
+    if (v < CGAIterMode_NUM){
+        return static_cast<CGAIterMode>(v);
+    } else {
+        return CGAIterMode::undef;
+    }
+}
+
+std::ostream& operator<<(std::ostream& out, const CGAIterMode imode){
+    switch (imode){
+        case CGAIterMode::north_len:
+            return out << "north len";
+        case CGAIterMode::west_len:
+            return out << "west len";
+        case CGAIterMode::pe_depth:
+            return out << "pe depth";
+        case CGAIterMode::pe_depth_inv:
+            return out << "pe depth (inv)";
+        case CGAIterMode::single:
+            return out << "single";
+        case CGAIterMode::undef:
+            return out << "undef";
         default:
             return out << "undefined";
     }

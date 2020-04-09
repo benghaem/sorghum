@@ -1,8 +1,9 @@
-#include "sorghum/para.h"
 #include <random>
 #include <thread>
 #include <iostream>
+#include <algorithm>
 #include "sorghum/util.h"
+#include "sorghum/para.h"
 
 ParaMCMC::ParaMCMC(int num_instances,
               MCMCProposalDist &proposal_dist,
@@ -10,7 +11,7 @@ ParaMCMC::ParaMCMC(int num_instances,
               int max_types,
               int max_inst,
               std::vector<TestCase>& test_cases
-        ) : instances() {
+        ) : tcs(test_cases), instances() {
 
     std::random_device rd;
     std::mt19937 rgen(rd());
@@ -51,20 +52,43 @@ void ParaMCMC::get_best_canidate(int n, MCMCSynth& mcmc, MCMCResult& res){
     res = current_best;
 }
 
-void ParaMCMC::run(){
+void ParaMCMC::run(int cycles){
     std::vector<std::thread> threads;
     std::vector<MCMCResult> results(instances.size());
-    for (size_t i = 0; i < instances.size(); i++){
-        threads.emplace_back(std::thread(get_best_canidate, 10000000, std::ref(*instances[i]), std::ref(results[i])));
-    }
-    for (auto& t : threads){
-        t.join();
-    }
 
-    for (auto& res : results){
-        if(res.valid){
-            std::cout << res.prob << std::endl;
+    for (int c = 0; c < cycles; c++){
+        threads.clear();
+        for (size_t i = 0; i < instances.size(); i++){
+            threads.emplace_back(std::thread(get_best_canidate, 100000000, std::ref(*instances[i]), std::ref(results[i])));
+        }
+        for (auto& t : threads){
+            t.join();
+        }
+
+        std::sort(results.begin(), results.end(), MCMCResult::compare);
+
+        std::cout << "CYCLE " << c << "/" << cycles << std::endl;
+        for (auto& res : results){
+            std::cout << "---------" << std::endl;
+            std::cout << "valid: " << res.valid << ", prob: " << res.prob << std::endl;
             dbg_print_prog(res.canidate);
+            for (auto& tc : tcs){
+                CGAVirt vm;
+                std::vector<int> out;
+                vm.eval(tc,
+                        res.canidate,
+                        out);
+                std::cout << "ref: " << std::endl;
+                dbg_print_vec(tc.south_output);
+                std::cout << "can: " << std::endl;
+                dbg_print_vec(out);
+            }
+
+        }
+
+        //set all of the instances to the best result
+        for (auto& instance : instances){
+            instance->set_to_result(results.back());
         }
     }
 }
