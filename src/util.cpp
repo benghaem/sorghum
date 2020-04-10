@@ -39,7 +39,7 @@ void dbg_print_progs(const std::vector<std::vector<CGAInst>>& progs){
         for (auto& pstage : progs){
             std::cout << "stage: " << s << std::endl;
             for (auto inst : pstage){
-                std::cout << inst << ",";
+                std::cout << inst.op << ",";
             }
             std::cout << std::endl;
             s++;
@@ -52,7 +52,7 @@ void dbg_print_prog(const CGAProg& prog){
         std::cout << "stage: " << s << std::endl;
         std::cout << "imode: " << prog.iteration_mode[s] << std::endl;
         for (auto inst : pstage){
-            std::cout << inst << ",";
+            std::cout <<inst << ",";
         }
         std::cout << std::endl;
         s++;

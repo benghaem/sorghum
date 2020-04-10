@@ -7,34 +7,42 @@
 
 #include "sorghum/synth.h"
 
-
-enum class CGAInst{
+enum class CGAOp{
     pull_N,
     pull_W,
     send_S_pop,
     send_S_peek,
     send_S_ifz_peek,
-    add,
-    sub,
-    mul,
-    pop,
-    push,
-    peek,
-    mac,
+    add, //works on reg
+    sub, //works on reg
+    mul, //works on reg
+    pop, //works on reg
+    push, //works on reg
+    peek, //works on reg
+    mac, //works on reg
     zero_push,
-    zero_reg,
+    zero_reg, //works on reg
     nop,
-    inc,
-    dec,
+    inc, //works on reg
+    dec, //works on reg
     undef,
 };
 
-const unsigned int CGAInst_NUM = 17;
+const unsigned int CGAOp_NUM = 17;
 
-CGAInst int_to_CGAInst(unsigned int v);
+CGAOp int_to_CGAOp(unsigned int v);
 
-std::ostream& operator<<(std::ostream& out, const CGAInst inst);
 
+struct CGAInst{
+    CGAInst(CGAOp op, std::initializer_list<int> args);
+    CGAInst(CGAOp op, std::array<int, 2>& args);
+
+    CGAOp op;
+    std::array<int, 2> args;
+};
+
+std::ostream& operator<<(std::ostream& out, const CGAOp& op);
+std::ostream& operator<<(std::ostream& out, const CGAInst& inst);
 
 enum class CGAIterMode{
     north_len,
@@ -65,7 +73,7 @@ struct ProgCursor {
 class CGAVirt {
 
     public:
-        CGAVirt();
+        CGAVirt(int num_regs);
         ~CGAVirt();
 
 
@@ -91,9 +99,11 @@ class CGAVirt {
 
         bool debug = false;
 
+        const int TOTAL_REGS;
+
     private:
         void reset_regs();
 
         std::vector<int> hw_stack;
-        int hw_reg;
+        std::vector<int> hw_regs;
 };

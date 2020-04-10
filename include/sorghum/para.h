@@ -12,6 +12,7 @@ class ParaMCMC{
               int max_stages,
               int max_types,
               int max_inst,
+              int num_regs,
               std::vector<TestCase>& test_cases);
         ~ParaMCMC();
 
@@ -19,6 +20,9 @@ class ParaMCMC{
         static void get_best_canidate(int n, MCMCSynth& mcmc,  MCMCResult& res);
 
     private:
+
+        int vm_num_regs;
+
         std::vector<TestCase> tcs;
         std::vector<std::unique_ptr<MCMCSynth>> instances;
 };

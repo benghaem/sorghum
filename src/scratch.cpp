@@ -6,14 +6,12 @@
 
 
 int main(){
-    CGAVirt testvm;
-
+    //single reg version
+    CGAVirt testvm(1);
 
 
     TestCase tc0({0,2,8,7},{{2,0,4,3}},{});
     std::vector<int> output;
-
-
     /*
     std::vector<CGAInst> el_product_prog = {
         CGAInst::pull_W,
@@ -77,19 +75,19 @@ int main(){
 
     //this needs to run input elements times
     std::vector<CGAInst> dotprod_mac_OSDF_prog_comp = {
-        CGAInst::pull_W,
-        CGAInst::pull_N,
-        CGAInst::send_S_peek,
-        CGAInst::mac,
-        CGAInst::pop //accumulation is in reg
+        CGAInst(CGAOp::pull_W,{}),
+        CGAInst(CGAOp::pull_N,{}),
+        CGAInst(CGAOp::send_S_peek,{}),
+        CGAInst(CGAOp::mac,{}),
+        CGAInst(CGAOp::pop,{}), //accumulation is in reg
     };
 
     //this needs to run output elements times
     std::vector<CGAInst> dotprod_mac_OSDF_prog_cleanup = {
-        CGAInst::push,
-        CGAInst::send_S_pop,
-        CGAInst::pull_N,
-        CGAInst::pop
+        CGAInst(CGAOp::push,{}),
+        CGAInst(CGAOp::send_S_pop,{}),
+        CGAInst(CGAOp::pull_N,{}),
+        CGAInst(CGAOp::pop,{}),
     };
 
 

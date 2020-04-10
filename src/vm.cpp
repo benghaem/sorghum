@@ -4,7 +4,28 @@
 #include "sorghum/vm.h"
 #include "sorghum/util.h"
 
-CGAVirt::CGAVirt(){
+CGAInst::CGAInst(CGAOp op, std::initializer_list<int> args): 
+    op(op)
+{
+    if (args.size() > 2){
+        throw;
+    }
+    this->args.fill(0);
+    int c = 0;
+    for ( int v : args ){
+        this->args[c] = v;
+        c++;
+    }
+}
+
+CGAInst::CGAInst(CGAOp op, std::array<int,2>& args): 
+    op(op),
+    args(args){
+};
+
+
+CGAVirt::CGAVirt(int num_regs) : TOTAL_REGS(num_regs), hw_regs(num_regs){
+    std::fill(hw_regs.begin(), hw_regs.end(), 0);
 }
 
 CGAVirt::~CGAVirt(){
@@ -13,7 +34,7 @@ CGAVirt::~CGAVirt(){
 void CGAVirt::reset_regs(){
     //clear all internal registers
     hw_stack.clear();
-    hw_reg = 0;
+    std::fill(hw_regs.begin(), hw_regs.end(), 0);
 }
 
 void CGAVirt::reset_stats(){
@@ -153,8 +174,9 @@ bool CGAVirt::eval(
             }
             for (unsigned int i = base_iterations; i < total_iterations; i++){
                 //interpret the program
-                for (CGAInst inst : stage){
+                for (CGAInst& inst : stage){
 
+                    CGAOp op = inst.op;
                     instr_count++;
                     if (debug){
                         std::cout << "---" << std::endl;
@@ -169,20 +191,20 @@ bool CGAVirt::eval(
                         dbg_print_deque(pe_link_W);
                         std::cout << "STACK" << std::endl;
                         dbg_print_stack(hw_stack);
-                        std::cout << "HW REG" << std::endl;
-                        std::cout << hw_reg << std::endl;
-                        std::cout << "NEXT INST" << std::endl;
-                        std::cout << inst << std::endl;
+                        std::cout << "HW REGS" << std::endl;
+                        dbg_print_vec(hw_regs);
+                        std::cout << "NEXT op" << std::endl;
+                        std::cout << op << std::endl;
                     }
 
-                    if (inst == CGAInst::pull_N){
+                    if (op == CGAOp::pull_N){
                         if (!pe_link_N.empty()){
                             hw_stack.push_back(pe_link_N.front());
                             pe_link_N.pop_front();
                         } else {
                             hw_stack.push_back(0);
                         }
-                    } else if (inst == CGAInst::pull_W){
+                    } else if (op == CGAOp::pull_W){
                         if (!pe_link_W.empty()){
                             hw_stack.push_back(pe_link_W.front());
                             pe_link_W.pop_front();
@@ -190,7 +212,7 @@ bool CGAVirt::eval(
                             hw_stack.push_back(0);
                         }
 
-                    } else if (inst == CGAInst::send_S_pop){
+                    } else if (op == CGAOp::send_S_pop){
                         //send top of stack or zero
                         if (!hw_stack.empty()){
                             pe_link_S.push_back(hw_stack.back());
@@ -200,7 +222,7 @@ bool CGAVirt::eval(
                             return false;
                         }
 
-                    } else if (inst == CGAInst::send_S_peek){
+                    } else if (op == CGAOp::send_S_peek){
                         //send top of stack or zero
                         if (!hw_stack.empty()){
                             pe_link_S.push_back(hw_stack.back());
@@ -208,55 +230,59 @@ bool CGAVirt::eval(
                             //pe_link_S.push_back(0);
                             return false;
                         }
-                    } else if (inst == CGAInst::send_S_ifz_peek){
+                    } else if (op == CGAOp::send_S_ifz_peek){
                         //send top of stack or zero
                         if (!hw_stack.empty()){
-                            if (!hw_reg){
+                            if (!hw_regs[inst.args[0]]){
                                 pe_link_S.push_back(hw_stack.back());
                             }
                         } else {
                             //pe_link_S.push_back(0);
                             return false;
                         } 
-                    } else if (inst == CGAInst::add){
+                    } else if (op == CGAOp::add){
                         if (hw_stack.empty()){
                             return false;
                         }
                         int op_stack = hw_stack.back();
+                        int reg_v = hw_regs[inst.args[0]];
                         hw_stack.pop_back();
-                        hw_stack.push_back(op_stack + hw_reg);
-                    } else if (inst == CGAInst::sub){
+                        hw_stack.push_back(op_stack + reg_v);
+                    } else if (op == CGAOp::sub){
                         if (hw_stack.empty()){
                             return false;
                         }
                         int op_stack = hw_stack.back();
+                        int reg_v = hw_regs[inst.args[0]];
                         hw_stack.pop_back();
-                        hw_stack.push_back(op_stack - hw_reg);
-                    } else if (inst == CGAInst::mul){
+                        hw_stack.push_back(op_stack - reg_v);
+                    } else if (op == CGAOp::mul){
                         if (hw_stack.empty()){
                             return false;
                         }
                         int op_stack = hw_stack.back();
+                        int reg_v = hw_regs[inst.args[0]];
                         hw_stack.pop_back();
-                        hw_stack.push_back(op_stack * hw_reg);
-                    } else if (inst == CGAInst::inc){
-                        hw_reg += 1;
-                    } else if (inst == CGAInst::dec){
-                        hw_reg -= 1;
-                    } else if (inst == CGAInst::pop){
+                        hw_stack.push_back(op_stack * reg_v);
+                    } else if (op == CGAOp::inc){
+                        hw_regs[inst.args[0]] += 1;
+                    } else if (op == CGAOp::dec){
+                        hw_regs[inst.args[0]] -= 1;
+                    } else if (op == CGAOp::pop){
                         if (hw_stack.empty()){
                             return false;
                         }
-                        hw_reg = hw_stack.back();
+                        hw_regs[inst.args[0]] = hw_stack.back();
                         hw_stack.pop_back();
-                    } else if (inst == CGAInst::push){
-                        hw_stack.push_back(hw_reg);
-                    } else if (inst == CGAInst::peek){
+                    } else if (op == CGAOp::push){
+                        int reg_v = hw_regs[inst.args[0]];
+                        hw_stack.push_back(reg_v);
+                    } else if (op == CGAOp::peek){
                         if (hw_stack.empty()){
                             return false;
                         }
-                        hw_reg = hw_stack.back();
-                    } else if (inst == CGAInst::mac){
+                        hw_regs[inst.args[0]] = hw_stack.back();
+                    } else if (op == CGAOp::mac){
                         if (hw_stack.size() < 2){
                             return false;
                         }
@@ -265,12 +291,14 @@ bool CGAVirt::eval(
                         int op_b = hw_stack.back();
                         hw_stack.pop_back();
 
-                        int mac_res = op_a * op_b + hw_reg;
+                        int reg_v = hw_regs[inst.args[0]];
+
+                        int mac_res = op_a * op_b + reg_v;
                         hw_stack.push_back(mac_res);
-                    } else if (inst == CGAInst::zero_push){
+                    } else if (op == CGAOp::zero_push){
                         hw_stack.push_back(0);
-                    } else if (inst == CGAInst::zero_reg){
-                        hw_reg = 0;
+                    } else if (op == CGAOp::zero_reg){
+                        hw_regs[inst.args[0]] = 0;
                     } else {
                         return false;
                     }
@@ -315,50 +343,54 @@ bool CGAVirt::eval(
 }
 
 
-CGAInst int_to_CGAInst(unsigned int v){
-    if (v < CGAInst_NUM){
-        return static_cast<CGAInst>(v);
+CGAOp int_to_CGAOp(unsigned int v){
+    if (v < CGAOp_NUM){
+        return static_cast<CGAOp>(v);
     } else {
-        return CGAInst::undef;
+        return CGAOp::undef;
     }
 }
 
 
-std::ostream& operator<<(std::ostream& out, const CGAInst inst){
-    switch (inst){
-        case CGAInst::pull_N:
+std::ostream& operator<<(std::ostream& out, const CGAInst& inst){
+    return out << inst.op << "<" << inst.args[0] << "," << inst.args[1] << ">";
+}
+
+std::ostream& operator<<(std::ostream& out, const CGAOp& op){
+    switch (op){
+        case CGAOp::pull_N:
             return out << "pull_N";
-        case CGAInst::pull_W:
+        case CGAOp::pull_W:
             return out << "pull_W";
-        case CGAInst::add:
+        case CGAOp::add:
             return out << "add";
-        case CGAInst::sub:
+        case CGAOp::sub:
             return out << "sub";
-        case CGAInst::send_S_pop:
+        case CGAOp::send_S_pop:
             return out << "send_S_pop";
-        case CGAInst::pop:
+        case CGAOp::pop:
             return out << "pop";
-        case CGAInst::mul:
+        case CGAOp::mul:
             return out << "mul";
-        case CGAInst::mac:
+        case CGAOp::mac:
             return out << "mac";
-        case CGAInst::peek:
+        case CGAOp::peek:
             return out << "peek";
-        case CGAInst::send_S_peek:
+        case CGAOp::send_S_peek:
             return out << "send_S_peek";
-        case CGAInst::send_S_ifz_peek:
+        case CGAOp::send_S_ifz_peek:
             return out << "send_S_ifz_peek";
-        case CGAInst::zero_reg:
+        case CGAOp::zero_reg:
             return out << "zero_reg";
-        case CGAInst::zero_push:
+        case CGAOp::zero_push:
             return out << "zero_push";
-        case CGAInst::push:
+        case CGAOp::push:
             return out << "push";
-        case CGAInst::nop:
+        case CGAOp::nop:
             return out << "nop";
-        case CGAInst::inc:
+        case CGAOp::inc:
             return out << "inc";
-        case CGAInst::dec:
+        case CGAOp::dec:
             return out << "dec";
         default:
             return out << "undefined";

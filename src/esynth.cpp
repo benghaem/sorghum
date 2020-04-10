@@ -11,22 +11,23 @@ bool esynth(int max_attempts,
             std::vector<std::vector<CGAInst>>& synth_program){
 
 
-    CGAVirt vm;
+    //only 1 register because we currently don't support generating args here
+    CGAVirt vm(1);;
     vm.cga_height = west_inputs.size();
 
 
-    std::vector<CGAInst> allowed_instr = {
-        CGAInst::pull_N, //0
-        CGAInst::pull_W, //1
-        CGAInst::send_S_pop, //2
-        CGAInst::send_S_peek, //3
-        CGAInst::push, //4
-        CGAInst::zero_reg, //5
-        CGAInst::add, //unsafe
-        CGAInst::pop,
-        CGAInst::peek,
-        CGAInst::mul,
-        CGAInst::mac,
+    std::vector<CGAOp> allowed_instr = {
+        CGAOp::pull_N, //0
+        CGAOp::pull_W, //1
+        CGAOp::send_S_pop, //2
+        CGAOp::send_S_peek, //3
+        CGAOp::push, //4
+        CGAOp::zero_reg, //5
+        CGAOp::add, //unsafe
+        CGAOp::pop,
+        CGAOp::peek,
+        CGAOp::mul,
+        CGAOp::mac,
     };
 
     std::vector<int> stack_value = {
@@ -77,11 +78,12 @@ bool esynth(int max_attempts,
             progs[1].clear();
 
             size_t int_prog_idx = 0;
+            //TODO: Enumerative synth does not support arguments
             for (int v : int_prog){
                 if (int_prog_idx <= i){
-                    progs[0].push_back(allowed_instr[v]);
+                    progs[0].push_back(CGAInst(allowed_instr[v], {}));
                 } else {
-                    progs[1].push_back(allowed_instr[v]);
+                    progs[1].push_back(CGAInst(allowed_instr[v], {}));
                 }
                 int_prog_idx++;
             }

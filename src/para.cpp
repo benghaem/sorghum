@@ -10,8 +10,9 @@ ParaMCMC::ParaMCMC(int num_instances,
               int max_stages,
               int max_types,
               int max_inst,
+              int num_regs,
               std::vector<TestCase>& test_cases
-        ) : tcs(test_cases), instances() {
+        ) : vm_num_regs(num_regs), tcs(test_cases), instances()  {
 
     std::random_device rd;
     std::mt19937 rgen(rd());
@@ -21,6 +22,7 @@ ParaMCMC::ParaMCMC(int num_instances,
                                                       max_stages,
                                                       max_types,
                                                       max_inst,
+                                                      vm_num_regs,
                                                       test_cases,
                                                       rgen()));
         instances.back()->init();
@@ -32,7 +34,7 @@ ParaMCMC::~ParaMCMC(){
 
 void ParaMCMC::get_best_canidate(int n, MCMCSynth& mcmc, MCMCResult& res){
 
-    MCMCResult current_best;
+    MCMCResult current_best = mcmc.get_current_result();
     MCMCResult tmp;
     for (int i = 0; i < n; i++){
         mcmc.gen_next_canidate();
@@ -59,7 +61,7 @@ void ParaMCMC::run(int cycles){
     for (int c = 0; c < cycles; c++){
         threads.clear();
         for (size_t i = 0; i < instances.size(); i++){
-            threads.emplace_back(std::thread(get_best_canidate, 100000000, std::ref(*instances[i]), std::ref(results[i])));
+            threads.emplace_back(std::thread(get_best_canidate, 10000000, std::ref(*instances[i]), std::ref(results[i])));
         }
         for (auto& t : threads){
             t.join();
@@ -73,7 +75,7 @@ void ParaMCMC::run(int cycles){
             std::cout << "valid: " << res.valid << ", prob: " << res.prob << std::endl;
             dbg_print_prog(res.canidate);
             for (auto& tc : tcs){
-                CGAVirt vm;
+                CGAVirt vm(vm_num_regs);
                 std::vector<int> out;
                 vm.eval(tc,
                         res.canidate,

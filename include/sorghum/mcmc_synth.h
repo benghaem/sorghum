@@ -54,6 +54,7 @@ public:
               int max_stages,
               int max_types,
               int max_inst,
+              int num_regs,
               std::vector<TestCase>& test_cases,
               unsigned int seed
               );
@@ -100,9 +101,10 @@ private:
     void xform_dec_stage(CGAProg& prog, ProgCursor sel);
     void xform_change_imode(CGAProg& prog, ProgCursor sel, CGAIterMode imode);
 
-    static constexpr MCMCxform xforms[6] = {MCMCxform::swap, 
+    static constexpr MCMCxform xforms[7] = {MCMCxform::swap,
                                             MCMCxform::insert,
                                             MCMCxform::remove,
+                                            MCMCxform::replace,
                                             MCMCxform::inc_stage,
                                             MCMCxform::dec_stage,
                                             MCMCxform::change_imode};

@@ -3,7 +3,7 @@
 #include <set>
 
 MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
-        int max_types, int max_inst, std::vector<TestCase> &test_cases, unsigned int seed)
+        int max_types, int max_inst, int max_regs, std::vector<TestCase> &test_cases, unsigned int seed)
     : zero_one_dist(0.0,1.0),
       pdist({proposal_dist.p_swap, proposal_dist.p_insert,
             proposal_dist.p_remove, proposal_dist.p_inc_stage,
@@ -14,6 +14,7 @@ MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
       max_canidate_inst_per_stage(max_inst),
       canidate_cost(0),
       canidate_valid(false),
+      vm(max_regs),
       test_cases(test_cases)
       {
     }
@@ -28,9 +29,9 @@ void MCMCSynth::init(){
     canidate.iteration_mode.push_back(CGAIterMode::north_len);
 
     canidate.stages.push_back(std::vector<CGAInst>());
-    canidate.stages[0].push_back(CGAInst::pull_N);
-    canidate.stages[0].push_back(CGAInst::pull_W);
-    canidate.stages[0].push_back(CGAInst::send_S_peek);
+    canidate.stages[0].push_back(CGAInst(CGAOp::pull_N, {0,0}));
+    canidate.stages[0].push_back(CGAInst(CGAOp::pull_W, {0,0}));
+    canidate.stages[0].push_back(CGAInst(CGAOp::send_S_peek, {0,0}));
 }
 
 
@@ -150,7 +151,9 @@ CGAProg MCMCSynth::xform_canidate(MCMCxform xform){
 
 void MCMCSynth::xform_inc_stage(CGAProg& prog, ProgCursor sel){
     if (prog.stages.size() < (unsigned int)max_canidate_stages){
-        std::vector<CGAInst> tmp = {CGAInst::pull_N, CGAInst::pull_W, CGAInst::send_S_peek};
+        std::vector<CGAInst> tmp = {CGAInst(CGAOp::pull_N, {}),
+                                    CGAInst(CGAOp::pull_W, {}),
+                                    CGAInst(CGAOp::send_S_peek, {})};
         prog.stages.insert(prog.stages.cbegin() + sel.stage, tmp);
         
         //new stage is also in north len mode
@@ -159,7 +162,8 @@ void MCMCSynth::xform_inc_stage(CGAProg& prog, ProgCursor sel){
 }
 
 void MCMCSynth::xform_dec_stage(CGAProg& prog, ProgCursor sel){
-    if (prog.stages.size() > 0){
+    //only remove if there will still be one stage left
+    if (prog.stages.size() > 1){
         prog.stages.erase(prog.stages.cbegin() + sel.stage);
         prog.iteration_mode.erase(prog.iteration_mode.cbegin() + sel.stage);
     }
@@ -223,10 +227,18 @@ ProgCursor MCMCSynth::gen_random_cursor(CGAProg& prog){
     return sel;
 }
 
+//this uses information from 
 CGAInst MCMCSynth::gen_random_inst(){
-    std::uniform_int_distribution<unsigned int> rand_int(0,CGAInst_NUM-1);
+    std::uniform_int_distribution<unsigned int> op_int(0,CGAOp_NUM-1);
+    std::uniform_int_distribution<unsigned int> reg_int(0,vm.TOTAL_REGS-1);
 
-    return int_to_CGAInst(rand_int(rgen));
+    CGAOp op = int_to_CGAOp(op_int(rgen));
+
+    std::array<int,2> args;
+    args[0] = reg_int(rgen);
+    args[1] = reg_int(rgen);
+
+    return CGAInst(op, args);
 }
 
 CGAIterMode MCMCSynth::gen_random_imode(){

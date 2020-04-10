@@ -135,10 +135,13 @@ void demo_mcmc_synth(){
     std::random_device rd;
     unsigned int seed = rd();
 
+    int vm_num_regs = 1;
+
     MCMCSynth ms0(pdist,
                   3, //2 max stages
                   1, //1 pe type
                   10, //max 7 inst per stage
+                  vm_num_regs,
                   sel_tcs,
                   seed);
 
@@ -155,7 +158,7 @@ void demo_mcmc_synth(){
 
             CGAProg canidate = ms0.get_canidate();
             std::vector<int> output;
-            CGAVirt vm;
+            CGAVirt vm(vm_num_regs);
             for (int i = 0; i < 2; i++){
                 vm.eval(sel_tcs[i],
                         canidate,
@@ -213,27 +216,35 @@ void demo_para_mcmc_synth(){
     int o_a = n_a*w_0a;
     int o_b = n_b*w_1a;
     TestCase t2_dp_ws({n_b,n_a},{{w_1a},{w_0a}},{o_a,o_b});
-    std::vector<TestCase> tcs_dp_ws = {t2_dp_ws};
+    std::vector<TestCase> tcs_dp_ws = {t0_dp_ws};
+
+    TestCase t0_sum_w({},{{1,8,22,14,7},{12,-5}},{52,7});
+    TestCase t1_sum_w({},{{-412,66,91},{-929,828,71}},{-255,-30});
+    std::vector<TestCase> tcs_sum_w = {t0_sum_w, t1_sum_w};
+
+    TestCase t0_third({},{{1,2,3,4,5,6,7},{8,9,10,11},{12,13,14,15,16}},{3,10,14});
+    std::vector<TestCase> tcs_third= {t0_third};
 
     std::vector<TestCase>& sel_tcs = tcs_dp_ws;
 
     MCMCProposalDist pdist;
-    pdist.p_swap = 0.34;
+    pdist.p_swap = 0.24;
     pdist.p_insert = 0.34;
     pdist.p_remove = 0.30;
-    pdist.p_replace = 0.0;
-    pdist.p_inc_stage = 0.01;
-    pdist.p_dec_stage = 0.01;
-    pdist.p_change_imode = 0.0002;
+    pdist.p_replace = 0.10;
+    pdist.p_inc_stage = 0.02;
+    pdist.p_dec_stage = 0.02;
+    pdist.p_change_imode = 0.001;
 
     ParaMCMC pmcmc(14, //threads
                    pdist, //dist
-                   4, //max stages
+                   2, //max stages
                    1, //max types
                    10, //max instr per stage
+                   4, //num regs
                    sel_tcs);
 
-    pmcmc.run(5);
+    pmcmc.run(6);
 
 }
 
