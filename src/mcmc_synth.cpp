@@ -3,21 +3,24 @@
 #include <set>
 
 MCMCSynth::MCMCSynth(MCMCProposalDist &proposal_dist, int max_stages,
-        int max_types, int max_inst, int max_regs, std::vector<TestCase> &test_cases, unsigned int seed)
+        int max_types, int max_inst, int num_regs, int height, int num_w_streams,
+        std::vector<TestCase> &test_cases, unsigned int seed)
     : zero_one_dist(0.0,1.0),
       pdist({proposal_dist.p_swap, proposal_dist.p_insert,
-            proposal_dist.p_remove, proposal_dist.p_inc_stage,
-            proposal_dist.p_dec_stage, proposal_dist.p_change_imode}),
+            proposal_dist.p_remove, proposal_dist.p_replace,
+            proposal_dist.p_inc_stage, proposal_dist.p_dec_stage,
+            proposal_dist.p_change_imode, 
+            proposal_dist.p_swap_stream, proposal_dist.p_swap_pe_type}),
       rgen(seed),
       max_canidate_stages(max_stages),
       max_canidate_types(max_types),
       max_canidate_inst_per_stage(max_inst),
       canidate_cost(0),
       canidate_valid(false),
-      vm(max_regs),
+      canidate(height, max_types, num_w_streams),
+      vm(num_regs),
       test_cases(test_cases)
-      {
-    }
+      {}
 
 MCMCSynth::~MCMCSynth(){
 }
@@ -26,12 +29,15 @@ MCMCSynth::~MCMCSynth(){
 void MCMCSynth::init(){
 
     //default iteration mode is north len
-    canidate.iteration_mode.push_back(CGAIterMode::north_len);
+    for (unsigned int i = 0; i < canidate.num_progs; i++){
+        CGAProg& c_prog = canidate.get_prog(i);
+        c_prog.iteration_mode.push_back(CGAIterMode::west_len);
 
-    canidate.stages.push_back(std::vector<CGAInst>());
-    canidate.stages[0].push_back(CGAInst(CGAOp::pull_N, {0,0}));
-    canidate.stages[0].push_back(CGAInst(CGAOp::pull_W, {0,0}));
-    canidate.stages[0].push_back(CGAInst(CGAOp::send_S_peek, {0,0}));
+        c_prog.stages.push_back(std::vector<CGAInst>());
+        c_prog.stages[0].push_back(CGAInst(CGAOp::pull_N, {0,0}));
+        c_prog.stages[0].push_back(CGAInst(CGAOp::pull_W, {0,0}));
+        c_prog.stages[0].push_back(CGAInst(CGAOp::send_S_peek, {0,0}));
+    }
 }
 
 
@@ -64,7 +70,7 @@ MCMCOutGoodness MCMCSynth::compute_output_goodness(TestCase& tc, std::vector<int
     return og;
 }
 
-MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::vector<int>& output){
+MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAConfig1D& new_canidate, std::vector<int>& output){
     output.clear();
     vm.reset_stats();
 
@@ -73,11 +79,11 @@ MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::ve
     float correctness_weight = 0.8;
     float execution_weight = 0.2;
 
-    float vp_weight = 0.6;
-    float cv_weight = 0.4;
+    float vp_weight = 0.1;
+    float cv_weight = 0.9;
 
-    float ex_stack_weight = 0.8;
-    float ex_stages_weight = 0.1;
+    float ex_stack_weight = 0.7;
+    float ex_stages_weight = 0.2;
     float ex_len_weight = 0.1;
 
     bool executed = vm.eval(tc, new_canidate, output);
@@ -88,10 +94,17 @@ MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::ve
         c.correctness = 1 - (og.per_values_present * vp_weight + og.per_correct_values * cv_weight);
         c.valid = (og.per_values_present == 1.0);
 
-        int total_stages = new_canidate.stages.size();
+        int total_stages = 0;
         int total_instr_count = 0;
-        for (auto& stage : new_canidate.stages){
-            total_instr_count += stage.size();
+
+        for (unsigned int i = 0; i < new_canidate.num_progs; i++){
+            CGAProg& nc_prog = new_canidate.get_prog(i);
+            total_stages += nc_prog.stages.size();
+            int local_instr_count = 0;
+            for (auto& stage : nc_prog.stages){
+                local_instr_count += stage.size();
+            }
+            total_instr_count = std::max(local_instr_count, total_instr_count);
         }
 
         float stack_sz = (float)vm.stat_max_stack / (float)vm.stack_limit;
@@ -115,35 +128,44 @@ MCMCCost MCMCSynth::unified_cost_fn(TestCase& tc, CGAProg& new_canidate, std::ve
 };
 
 //transform the current canidate to create another canidate
-CGAProg MCMCSynth::xform_canidate(MCMCxform xform){
+CGAConfig1D MCMCSynth::xform_canidate(MCMCxform xform){
 
-    CGAProg new_canidate = canidate;
+    CGAConfig1D new_canidate = canidate;
+    CGAProg& nc_prog = sel_random_prog(new_canidate);
 
     if (xform == MCMCxform::swap){
-        ProgCursor ca = gen_random_cursor(new_canidate);
-        ProgCursor cb = gen_random_cursor(new_canidate);
-        xform_swap_inst(new_canidate, ca, cb);
+        ProgCursor ca = gen_random_cursor(nc_prog);
+        ProgCursor cb = gen_random_cursor(nc_prog);
+        xform_swap_inst(nc_prog, ca, cb);
     } else if (xform == MCMCxform::replace){
-        ProgCursor c = gen_random_cursor(new_canidate);
+        ProgCursor c = gen_random_cursor(nc_prog);
         CGAInst new_inst = gen_random_inst();
-        xform_replace_inst(new_canidate, c, new_inst);
+        xform_replace_inst(nc_prog, c, new_inst);
     } else if (xform == MCMCxform::insert){
-        ProgCursor c = gen_random_cursor(new_canidate);
+        ProgCursor c = gen_random_cursor(nc_prog);
         CGAInst new_inst = gen_random_inst();
-        xform_insert_inst(new_canidate, c, new_inst);
+        xform_insert_inst(nc_prog, c, new_inst);
     } else if (xform == MCMCxform::remove){
-        ProgCursor c = gen_random_cursor(new_canidate);
-        xform_remove_inst(new_canidate,c);
+        ProgCursor c = gen_random_cursor(nc_prog);
+        xform_remove_inst(nc_prog,c);
     } else if (xform == MCMCxform::inc_stage){
-        ProgCursor c = gen_random_cursor(new_canidate);
-        xform_inc_stage(new_canidate, c);
+        ProgCursor c = gen_random_cursor(nc_prog);
+        xform_inc_stage(nc_prog, c);
     } else if (xform == MCMCxform::dec_stage){
-        ProgCursor c = gen_random_cursor(new_canidate);
-        xform_dec_stage(new_canidate, c);
+        ProgCursor c = gen_random_cursor(nc_prog);
+        xform_dec_stage(nc_prog, c);
     } else if (xform == MCMCxform::change_imode){
-        ProgCursor c = gen_random_cursor(new_canidate);
+        ProgCursor c = gen_random_cursor(nc_prog);
         CGAIterMode new_imode = gen_random_imode();
-        xform_change_imode(new_canidate,c,new_imode);
+        xform_change_imode(nc_prog,c,new_imode);
+    } else if (xform == MCMCxform::swap_stream){
+        unsigned int pe_id = sel_random_pe_id(new_canidate);
+        unsigned int new_stream_id = sel_random_stream_id(new_canidate);
+        xform_change_stream_assignment(new_canidate,pe_id,new_stream_id);
+    } else if (xform == MCMCxform::swap_pe_type){
+        unsigned int pe_id = sel_random_pe_id(new_canidate);
+        unsigned int new_prog_id = sel_random_prog_id(new_canidate);
+        xform_change_pe_prog(new_canidate,pe_id,new_prog_id);
     }
 
     return new_canidate;
@@ -155,9 +177,9 @@ void MCMCSynth::xform_inc_stage(CGAProg& prog, ProgCursor sel){
                                     CGAInst(CGAOp::pull_W, {}),
                                     CGAInst(CGAOp::send_S_peek, {})};
         prog.stages.insert(prog.stages.cbegin() + sel.stage, tmp);
-        
+
         //new stage is also in north len mode
-        prog.iteration_mode.insert(prog.iteration_mode.cbegin() + sel.stage, CGAIterMode::north_len);
+        prog.iteration_mode.insert(prog.iteration_mode.cbegin() + sel.stage, CGAIterMode::west_len);
     }
 }
 
@@ -199,6 +221,62 @@ void MCMCSynth::xform_remove_inst(CGAProg& prog, ProgCursor sel){
     }
 }
 
+void MCMCSynth::xform_change_stream_assignment(CGAConfig1D& cfg1d, 
+                                               unsigned int pe_id,
+                                               int stream_id){
+    cfg1d.set_w_stream(pe_id,stream_id);
+}
+
+
+void MCMCSynth::xform_change_pe_prog(CGAConfig1D& cfg1d,
+                                     unsigned int pe_id,
+                                     unsigned int prog_id){
+    cfg1d.set_assigned_prog(pe_id,prog_id);
+}
+
+unsigned int MCMCSynth::sel_random_pe_id(CGAConfig1D& cfg1d){
+    unsigned int pe_count = cfg1d.cga_height;
+    std::uniform_int_distribution<unsigned int> rand_int(0,pe_count-1);
+
+    unsigned int pe = rand_int(rgen);
+    if (pe >= pe_count){
+        throw;
+    }
+
+    return pe;
+}
+
+int MCMCSynth::sel_random_stream_id(CGAConfig1D& cfg1d){
+    int streams = cfg1d.num_w_streams;
+    std::uniform_int_distribution<int> rand_int(-1,streams-1);
+
+    int stream_id = rand_int(rgen);
+    if (stream_id >= streams || stream_id < -1){
+        throw;
+    }
+
+    return stream_id;
+}
+
+unsigned int MCMCSynth::sel_random_prog_id(CGAConfig1D& cfg1d){
+    unsigned int progs = cfg1d.num_progs;
+
+    std::uniform_int_distribution<unsigned int> rand_int(0,progs-1);
+
+    unsigned int prog = rand_int(rgen);
+    if (prog >= progs){
+        throw;
+    }
+
+    return prog;
+}
+
+CGAProg& MCMCSynth::sel_random_prog(CGAConfig1D& cfg1d){
+    unsigned int prog = sel_random_prog_id(cfg1d); 
+
+    return cfg1d.get_prog(prog);
+}
+
 ProgCursor MCMCSynth::gen_random_cursor(CGAProg& prog){
     unsigned int stages = prog.stages.size();
 
@@ -206,7 +284,7 @@ ProgCursor MCMCSynth::gen_random_cursor(CGAProg& prog){
     std::uniform_int_distribution<unsigned int> rand_int(0,stages-1);
 
     unsigned int stage = rand_int(rgen);
-    if (stage > stages){
+    if (stage >= stages){
         throw;
     }
 
@@ -227,7 +305,7 @@ ProgCursor MCMCSynth::gen_random_cursor(CGAProg& prog){
     return sel;
 }
 
-//this uses information from 
+//this uses information from
 CGAInst MCMCSynth::gen_random_inst(){
     std::uniform_int_distribution<unsigned int> op_int(0,CGAOp_NUM-1);
     std::uniform_int_distribution<unsigned int> reg_int(0,vm.TOTAL_REGS-1);
@@ -248,10 +326,7 @@ CGAIterMode MCMCSynth::gen_random_imode(){
 }
 
 MCMCResult MCMCSynth::get_current_result(){
-    MCMCResult res;
-    res.canidate = canidate;
-    res.valid = canidate_valid;
-    res.prob = canidate_cost;
+    MCMCResult res(canidate, canidate_cost, canidate_valid);
     return res;
 }
 
@@ -259,12 +334,22 @@ void MCMCSynth::gen_next_canidate() {
     // random sample from proposal distribution to get transformation
 
     unsigned int raw_xform = pdist(rgen);
-    
-    MCMCxform xform = MCMCSynth::xforms[raw_xform];
+
+    constexpr MCMCxform xforms[9] = {MCMCxform::swap,
+                                    MCMCxform::insert,
+                                    MCMCxform::remove,
+                                    MCMCxform::replace,
+                                    MCMCxform::inc_stage,
+                                    MCMCxform::dec_stage,
+                                    MCMCxform::change_imode,
+                                    MCMCxform::swap_stream,
+                                    MCMCxform::swap_pe_type};
+
+    MCMCxform xform = xforms[raw_xform];
 
     // apply transformation
 
-    CGAProg new_canidate = xform_canidate(xform);
+    CGAConfig1D new_canidate = xform_canidate(xform);
 
     // evaluate new program on all test_cases and compute
     // cost function
@@ -311,7 +396,12 @@ void MCMCSynth::gen_next_canidate() {
     }
 }
 
-MCMCResult::MCMCResult(): canidate(), prob(0.0), valid(false){
+MCMCResult::MCMCResult(CGAConfig1D canidate, float prob, bool valid): 
+    canidate(canidate), prob(prob), valid(valid){
+}
+
+MCMCResult::MCMCResult():
+    canidate(0,0,0), prob(0.0), valid(false){
 }
 
 bool MCMCResult::better_than(const MCMCResult& other){

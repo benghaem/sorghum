@@ -16,3 +16,5 @@ void dbg_print_stack(const std::vector<int>& stack);
 void dbg_print_progs(const std::vector<std::vector<CGAInst>>& progs);
 
 void dbg_print_prog(const CGAProg& prog);
+
+void dbg_print_cfg1d(CGAConfig1D& cfg1d);

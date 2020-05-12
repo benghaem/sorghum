@@ -13,11 +13,13 @@ class ParaMCMC{
               int max_types,
               int max_inst,
               int num_regs,
+              int height,
+              int num_w_streams,
               std::vector<TestCase>& test_cases);
         ~ParaMCMC();
 
         void run(int cycles);
-        static void get_best_canidate(int n, MCMCSynth& mcmc,  MCMCResult& res);
+        static void get_best_canidate(int n, int cycle, MCMCSynth& mcmc,  MCMCResult& res);
 
     private:
 

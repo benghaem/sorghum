@@ -58,3 +58,19 @@ void dbg_print_prog(const CGAProg& prog){
         s++;
     }
 }
+
+void dbg_print_cfg1d(CGAConfig1D& cfg1d){
+
+    std::cout << "PE Assignment" << std::endl;
+    for (unsigned int i = 0; i < cfg1d.cga_height; i++){
+        unsigned int prog = cfg1d.get_assigned_prog_id(i);
+        int stream_id = cfg1d.get_assigned_stream_id(i);
+        std::cout << stream_id << "--> pe" <<  i << "-->" << prog << std::endl;
+    }
+
+    for(unsigned int i = 0; i < cfg1d.num_progs; i++){
+        std::cout << "!!pe_prog: " << i << std::endl;
+        dbg_print_prog(cfg1d.get_prog(i));
+    };
+
+}

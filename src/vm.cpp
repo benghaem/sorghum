@@ -4,6 +4,30 @@
 #include "sorghum/vm.h"
 #include "sorghum/util.h"
 
+
+CGAConfig1D::CGAConfig1D(unsigned int height, unsigned int num_progs,
+              unsigned int num_w_streams) :
+      num_w_streams(num_w_streams),
+      cga_height(height),
+      num_progs(num_progs),
+      progs_(num_progs),
+      pe_assignment_(height),
+      pe_w_stream_sel_(height)
+    {
+        std::fill(pe_assignment_.begin(),pe_assignment_.end(),0);
+        std::fill(pe_w_stream_sel_.begin(),pe_w_stream_sel_.end(),-1);
+
+        for (unsigned int i = 0; i < height; i++){
+            if (i >= num_w_streams){
+                pe_w_stream_sel_[i] = -1;
+            } else {
+                pe_w_stream_sel_[i] = i;
+            }
+        }
+    };
+
+
+
 CGAInst::CGAInst(CGAOp op, std::initializer_list<int> args): 
     op(op)
 {
@@ -47,72 +71,12 @@ bool CGAVirt::check(std::vector<int>& north_input,
                     std::vector<int>& south_output,
                     std::vector<std::vector<CGAInst>>& progs){
 
-
-
-    if (west_inputs.size() != cga_height){
-        //std::cout << "bad number of W input" << std::endl;
-        return false;
-    }
-
-    std::vector<int> test_output;
-    test_output.clear();
-
-    CGAProg p;
-    p.stages = progs;
-
-    TestCase tc({},{},{});
-
-    tc.north_input = north_input;
-    tc.west_inputs = west_inputs;
-    tc.south_output = south_output;
-
-    bool success = eval(
-         tc,
-         p,
-         test_output);
-
-    if (!success){
-        //std::cout << "eval error" << std::endl;
-        return false;
-    }
-
-    if (test_output.size() == south_output.size()){
-        for (size_t i = 0; i < test_output.size(); i++){
-            /*if (test_output[i] < 0){
-                std::cout << "ERROR" << std::endl;
-                std::cout << "EVAL RET: "<< success << std::endl;
-                dbg_print_progs(progs);
-                this->debug = true;
-                test_output.clear();
-                eval(north_input,
-                 west_inputs,
-                 test_output,
-                 progs);
-                throw;
-            }*/
-            if (test_output[i] != south_output[i]){
-                //std::cout << "output mismatch" << std::endl;
-                //dbg_print_vec(test_output);
-                //std::cout << " != " << std::endl;
-                //dbg_print_vec(south_output);
-                return false;
-            }
-        }
-    } else {
-        //std::cout << "bad output size" << std::endl;
-        return false;
-    }
-
-    dbg_print_vec(test_output);
-    dbg_print_vec(south_output);
-
-    return true;
+    return false;
 }
-
 
 bool CGAVirt::eval(
         TestCase& tc,
-        CGAProg& prog,
+        CGAConfig1D& cfg,
         std::vector<int>& output
         ){
 
@@ -123,7 +87,7 @@ bool CGAVirt::eval(
     std::deque<int> pe_link_S;
     std::deque<int> pe_link_W;
 
-    cga_height = tc.west_inputs.size();
+    unsigned int cga_height = cfg.cga_height;
 
     unsigned int north_input_sz = tc.north_input.size();
 
@@ -142,11 +106,15 @@ bool CGAVirt::eval(
 
         //load west PE link
         pe_link_W.clear();
-        for (int v : tc.west_inputs[pe]){
-            pe_link_W.push_front(v);
+        int sel_stream = cfg.get_w_stream(pe);
+        if (sel_stream != -1){
+            for (int v : tc.west_inputs[sel_stream]){
+                pe_link_W.push_front(v);
+            }
         }
 
         //run each program in the programs vector (setup, comp, cleanup)
+        CGAProg& prog = cfg.get_assigned_prog(pe);
         int prog_stage_id = 0;
         for (std::vector<CGAInst>& stage : prog.stages){
             //we run each program based on the mode
@@ -174,8 +142,10 @@ bool CGAVirt::eval(
             }
             for (unsigned int i = base_iterations; i < total_iterations; i++){
                 //interpret the program
-                for (CGAInst& inst : stage){
+                int stage_len = stage.size();
+                for (int stage_pc = 0; stage_pc < stage_len; stage_pc++){
 
+                    CGAInst& inst = stage[stage_pc];
                     CGAOp op = inst.op;
                     instr_count++;
                     if (debug){
@@ -268,11 +238,34 @@ bool CGAVirt::eval(
                         hw_regs[inst.args[0]] += 1;
                     } else if (op == CGAOp::dec){
                         hw_regs[inst.args[0]] -= 1;
+                    } else if (op == CGAOp::gt){
+                        if (hw_stack.empty()){
+                            return false;
+                        }
+                        int reg_v = hw_regs[inst.args[0]];
+                        int stack_v = hw_stack.back();
+                        hw_stack.push_back(stack_v > reg_v);
+                    } else if (op == CGAOp::lt){
+                        if (hw_stack.empty()){
+                            return false;
+                        }
+                        int reg_v = hw_regs[inst.args[0]];
+                        int stack_v = hw_stack.back();
+                        hw_stack.push_back(stack_v < reg_v);
+                    } else if (op == CGAOp::eq){
+                        if (hw_stack.empty()){
+                            return false;
+                        }
+
+                        int reg_v = hw_regs[inst.args[0]];
+                        int stack_v = hw_stack.back();
+                        hw_stack.push_back(stack_v == reg_v);
                     } else if (op == CGAOp::pop){
                         if (hw_stack.empty()){
                             return false;
                         }
-                        hw_regs[inst.args[0]] = hw_stack.back();
+                        //just trying something out
+                        //hw_regs[inst.args[0]] = hw_stack.back();
                         hw_stack.pop_back();
                     } else if (op == CGAOp::push){
                         int reg_v = hw_regs[inst.args[0]];
@@ -299,7 +292,17 @@ bool CGAVirt::eval(
                         hw_stack.push_back(0);
                     } else if (op == CGAOp::zero_reg){
                         hw_regs[inst.args[0]] = 0;
-                    } else {
+                    } else if (op == CGAOp::jump1c){
+                        if (hw_stack.empty()){
+                            return false;
+                        }
+                        int stack_v = hw_stack.back();
+                        if (stack_v > 0){
+                            //jump over next instruction
+                            stage_pc++;
+                        }
+                    }
+                    else {
                         return false;
                     }
 
@@ -392,9 +395,18 @@ std::ostream& operator<<(std::ostream& out, const CGAOp& op){
             return out << "inc";
         case CGAOp::dec:
             return out << "dec";
-        default:
-            return out << "undefined";
+        case CGAOp::jump1c:
+            return out << "jump1c";
+        case CGAOp::gt:
+            return out << "gt";
+        case CGAOp::lt:
+            return out << "lt";
+        case CGAOp::eq:
+            return out << "eq";
+        case CGAOp::undef:
+            return out << "undef";
     }
+    return out << "unknown instr";
 }
 
 

@@ -12,8 +12,8 @@ bool esynth(int max_attempts,
 
 
     //only 1 register because we currently don't support generating args here
-    CGAVirt vm(1);;
-    vm.cga_height = west_inputs.size();
+    CGAVirt vm(1);
+    CGAConfig1D cfg(west_inputs.size(), 1, west_inputs.size());
 
 
     std::vector<CGAOp> allowed_instr = {
